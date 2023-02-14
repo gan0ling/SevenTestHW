@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "main-rp2040", 
+    "ashell",
+    ]
+default-members = ["main-rp2040"]
+
