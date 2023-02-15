@@ -23,7 +23,7 @@ where
     autocomplete: A,
     history: H,
     editor_buf: Vec<u8, CMD_LEN>,
-    log_buffer: Pipe<CS,LOG_LEN>,
+    log_buffer: &'static Pipe<CS,LOG_LEN>,
     editor_len: usize,
     cursor: usize,
     control: bool,
@@ -37,14 +37,14 @@ where
     A: Autocomplete<CMD_LEN>,
     H: History<CMD_LEN>,
 {
-    pub fn new(autocomplete: A, history: H) -> Self {
+    pub fn new(autocomplete: A, history: H, log_buffer: &'static Pipe<CS, LOG_LEN>) -> Self {
         Self {
             autocomplete,
             history,
             // env,
             cursor: 0,
             editor_buf: Vec::new(),
-            log_buffer: Pipe::new(),
+            log_buffer,
             editor_len: 0,
             autocomplete_on: true,
             history_on: true,

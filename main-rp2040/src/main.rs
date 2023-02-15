@@ -9,22 +9,22 @@ mod pwmin_pio;
 mod shell;
 mod mylog;
 
-use heapless::Vec;
+
 use embassy_executor::_export::StaticCell;
-use embassy_futures::join::join;
-use embassy_rp::gpio::{AnyPin, Pin};
+
+use embassy_rp::gpio::{Pin};
 use embassy_executor::Spawner;
 use embassy_rp::interrupt;
 // use embassy_rp::peripherals::USB;
 // use embassy_rp::usb::Driver as USBDriver;
-use embassy_time::{Duration, Timer};
+
 use embassy_rp::pio::PioPeripherial;
-use embassy_rp::peripherals::UART0;
-use embassy_rp::uart::{BufferedUart, BufferedUartRx, BufferedUartTx, Config};
-use embedded_io::asynch::{Read as AsyncRead, Write as AsyncWrite};
+
+use embassy_rp::uart::{BufferedUart, Config};
+use embedded_io::asynch::{Read as AsyncRead, Write};
 use {defmt_rtt as _, panic_probe as _};
-use ashell::{ShellResult,Environment, autocomplete::{StaticAutocomplete, Autocomplete}, history::{LRUHistory, History}, AShell};
-use shell::{SevenShell, SevenShellEnv, MAX_CMD_LEN, TOTAL_CMDS, LOG_BUFF_SIZE, CMD_LIST};
+use ashell::{autocomplete::{StaticAutocomplete}, history::{LRUHistory}, AShell};
+use shell::{SevenShell, SevenShellEnv, CMD_LIST};
 
 macro_rules! singleton {
     ($val:expr) => {{
@@ -70,13 +70,13 @@ async fn main(spawner: Spawner) {
     // init SevenShell
     let history = LRUHistory::default();
     let completer = StaticAutocomplete(CMD_LIST);
-    let mut shell:SevenShell = AShell::new(completer, history);
+    let mut shell:SevenShell = AShell::new(completer, history, &mylog::LOG_PIPE);
 
     //init pio
     let pio0 = p.PIO0;
     let pio1 = p.PIO1;
-    let (_, sm0, sm1, sm2, sm3, ..) = pio0.split();
-    let (_, pio1_sm0, ..) = pio1.split();
+    let (_, sm0, _sm1, _sm2, _sm3, ..) = pio0.split();
+    let (_, _pio1_sm0, ..) = pio1.split();
 
     // spawner.spawn(shell_task(spawner, rx, tx)).unwrap();
     // spawner.spawn(shell_task(uart)).unwrap();
@@ -105,7 +105,7 @@ async fn main(spawner: Spawner) {
         loop {
             let rx_len = rx.read(&mut rx_buf).await.unwrap();
             for byte in &rx_buf[..rx_len] {
-                shell.feed(&mut env, *byte);
+                shell.feed(&mut env, *byte).await;
             }
         }
     }

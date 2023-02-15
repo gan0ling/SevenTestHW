@@ -1,7 +1,7 @@
 use core::fmt::Write;
 use embassy_rp::peripherals::UART0;
 use embassy_rp::uart::BufferedUartTx;
-use embassy_sync::pipe::{Pipe, Reader as PipeReader, Writer as PipeWriter};
+use embassy_sync::pipe::{Pipe};
 use embedded_io::asynch::{Read as AsyncRead, Write as AsyncWrite};
 // use embassy_rp::uart::{BufferedUart, BufferedUartRx, BufferedUartTx};
 
@@ -28,7 +28,7 @@ impl MyLogger {
 }
 
 impl log::Log for MyLogger {
-    fn enabled(&self, metadata: &log::Metadata) -> bool {
+    fn enabled(&self, _metadata: &log::Metadata) -> bool {
         true
     }
 

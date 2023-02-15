@@ -2,10 +2,10 @@
 #![allow(incomplete_features)]
 
 use ashell::{ShellResult,Environment, autocomplete::{StaticAutocomplete, Autocomplete}, history::{LRUHistory, History}, AShell};
-use embassy_rp::peripherals::UART0;
-use embassy_rp::uart::{BufferedUart, BufferedUartRx, BufferedUartTx, Config};
-use embassy_executor::_export::StaticCell;
-use embedded_io::asynch::{Read as AsyncRead, Write as AsyncWrite};
+
+
+
+
 
 
 pub const MAX_CMD_LEN:usize = 64;
@@ -37,13 +37,18 @@ where
         args: &str,
     ) -> ShellResult 
     {
+        match cmd {
+            "help" => log::info!("help for cmds"),
+            "pwmin" => log::info!("pwmin test"),
+            _ => log::info!("unknown cmd"),
+        }
         Ok(())
     }
 
     async fn control(
         &mut self, 
-        shell: &mut AShell<A, H, CMD_LEN, LOG_LEN>, 
-        code: u8
+        _shell: &mut AShell<A, H, CMD_LEN, LOG_LEN>, 
+        _code: u8
     ) -> ShellResult
     {
         Ok(())

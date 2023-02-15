@@ -1,5 +1,5 @@
 use {defmt_rtt as _, panic_probe as _};
-use embassy_rp::gpio::{AnyPin, Pin, Pull};
+use embassy_rp::gpio::{AnyPin, Pin};
 use embassy_rp::pio::{Pio0, Pio1, PioStateMachine, PioStateMachineInstance, 
                       ShiftDirection, Sm0, Sm1, Sm2, Sm3,FifoJoin};
 use embassy_rp::pio_instr_util;
@@ -42,7 +42,7 @@ macro_rules! impl_pwmin_pio {
             let publisher = PWM_PUBSUB_CHANNEL.publisher().unwrap();
 
             // setup sm
-            let wait_irq = sm.sm_no();
+            let _wait_irq = sm.sm_no();
             let prg = pio_proc::pio_file!("./src/PwmIn.pio");
             let relocated = RelocatedProgram::new(&prg.program);
 
