@@ -19,6 +19,7 @@ pub mod history;
 mod shell;
 
 pub use shell::*;
+pub type ShellResult = Result<(), ShellError>;
 
 pub enum ShellError 
 {
@@ -56,24 +57,24 @@ pub enum Input<'a> {
     Command((&'a str, &'a str)),
 }
 
-pub trait Environment<S, A, H, const CMD_LEN: usize, const LOG_SIZE: usize>
+pub trait Environment<A, H, const CMD_LEN: usize, const LOG_SIZE: usize>
 where
-    S: AsyncRead + AsyncWrite,
+    // S: AsyncRead + AsyncWrite,
     A: autocomplete::Autocomplete<CMD_LEN>,
     H: history::History<CMD_LEN>,
 {
     async fn command(
         &mut self,
-        shell: &mut AShell<S, A, H, CMD_LEN, LOG_SIZE>,
+        shell: &mut AShell<A, H, CMD_LEN, LOG_SIZE>,
         cmd: &str,
         args: &str,
-    ) -> Result<(), i32>;
+    ) -> ShellResult;
 
     async fn control(
         &mut self, 
-        shell: &mut AShell<S, A, H, CMD_LEN, LOG_SIZE>, 
+        shell: &mut AShell<A, H, CMD_LEN, LOG_SIZE>, 
         code: u8
-    ) -> Result<(), i32>;
+    ) -> ShellResult;
 }
 
 // pub struct Serial<T, TX: Write, RX: Read> {

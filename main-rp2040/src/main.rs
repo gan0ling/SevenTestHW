@@ -1,23 +1,30 @@
 #![no_std]
 #![no_main]
 #![feature(type_alias_impl_trait)]
+#![feature(async_fn_in_trait)]
+#![allow(incomplete_features)]
 
 
 mod pwmin_pio;
 mod shell;
+mod mylog;
 
 use heapless::Vec;
 use embassy_executor::_export::StaticCell;
+use embassy_futures::join::join;
 use embassy_rp::gpio::{AnyPin, Pin};
 use embassy_executor::Spawner;
 use embassy_rp::interrupt;
 // use embassy_rp::peripherals::USB;
 // use embassy_rp::usb::Driver as USBDriver;
 use embassy_time::{Duration, Timer};
-use embassy_rp::pio::{PioPeripherial};
+use embassy_rp::pio::PioPeripherial;
 use embassy_rp::peripherals::UART0;
 use embassy_rp::uart::{BufferedUart, BufferedUartRx, BufferedUartTx, Config};
+use embedded_io::asynch::{Read as AsyncRead, Write as AsyncWrite};
 use {defmt_rtt as _, panic_probe as _};
+use ashell::{ShellResult,Environment, autocomplete::{StaticAutocomplete, Autocomplete}, history::{LRUHistory, History}, AShell};
+use shell::{SevenShell, SevenShellEnv, MAX_CMD_LEN, TOTAL_CMDS, LOG_BUFF_SIZE, CMD_LIST};
 
 macro_rules! singleton {
     ($val:expr) => {{
@@ -28,16 +35,16 @@ macro_rules! singleton {
     }};
 }
 
-#[embassy_executor::task]
-async fn shell_task(spawner:Spawner, mut rx: BufferedUartRx<'static, UART0>, mut tx: BufferedUartTx<'static, UART0>) {
+// #[embassy_executor::task]
+// async fn shell_task(spawner:Spawner, mut rx: BufferedUartRx<'static, UART0>, mut tx: BufferedUartTx<'static, UART0>) {
     // embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
     // static LOGGER: usb_shell::UsbShell<1024> = usb_shell::UsbShell::new();
-    static LOGGER:serial_shell::UartShell<1024> = serial_shell::UartShell::new();
-    unsafe {
-            let _ = ::log::set_logger_racy(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
-    }
-    let _ = LOGGER.run(spawner, rx, tx).await;
-}
+    // static LOGGER:serial_shell::UartShell<1024> = serial_shell::UartShell::new();
+    // unsafe {
+            // let _ = ::log::set_logger_racy(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
+    // }
+    // let _ = LOGGER.run(spawner, rx, tx).await;
+// }
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -49,20 +56,31 @@ async fn main(spawner: Spawner) {
     let mut cfg = Config::default();
     cfg.baudrate = 921600;
     let uart = BufferedUart::new(uart, irq, tx_pin, rx_pin, tx_buf, rx_buf, cfg);
+
     //FIXME: embassy-rp bug, we should set uartimsc.rxim to true
     let regs = embassy_rp::pac::UART0.uartimsc();
     unsafe {
         regs.modify(|w| w.set_rxim(true));
     }
     //end FIXME
+    
     let (mut rx, mut tx) = uart.split();
+    //init log
+    mylog::init_log();
+    // init SevenShell
+    let history = LRUHistory::default();
+    let completer = StaticAutocomplete(CMD_LIST);
+    let mut shell:SevenShell = AShell::new(completer, history);
 
+    //init pio
     let pio0 = p.PIO0;
     let pio1 = p.PIO1;
     let (_, sm0, sm1, sm2, sm3, ..) = pio0.split();
     let (_, pio1_sm0, ..) = pio1.split();
 
-    spawner.spawn(shell_task(spawner, rx, tx)).unwrap();
+    // spawner.spawn(shell_task(spawner, rx, tx)).unwrap();
+    // spawner.spawn(shell_task(uart)).unwrap();
+    spawner.spawn(mylog::log_task(tx));
     spawner.spawn(pwmin_pio::Pio0_Sm0_pwmin_task(sm0, p.PIN_0.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm1(sm1, p.PIN_1.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm2(sm2, p.PIN_2.degrade())).unwrap();
@@ -70,9 +88,27 @@ async fn main(spawner: Spawner) {
     // spawner.spawn(pwmin_pio::pio1_task_sm0(pio1_sm0, p.PIN_4.degrade())).unwrap();
     spawner.spawn(pwmin_pio::pwmin_log_task()).unwrap();
     // let mut counter = 0;
-    // loop {
-        // counter += 1;
-        // log::info!("Tick {}", counter);
-        // Timer::after(Duration::from_secs(1)).await;
-    // }
+
+    //shell task
+    // let reader = shell.reader();
+    // let tx_fut = async {
+        // let mut log_buf:[u8;32] = [0;32];
+        // loop {
+            // let len = reader.read(&mut log_buf[..]).await;
+            // tx.write_all(&log_buf[..len]).await.unwrap();
+        // }
+    // };
+    // let rx_fut = async {
+    loop {
+        let mut env = SevenShellEnv::default();
+        let mut rx_buf:[u8;32] = [0;32];
+        loop {
+            let rx_len = rx.read(&mut rx_buf).await.unwrap();
+            for byte in &rx_buf[..rx_len] {
+                shell.feed(&mut env, *byte);
+            }
+        }
+    }
+
+    // join(tx_fut, rx_fut).await;
 }

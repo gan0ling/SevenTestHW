@@ -8,23 +8,20 @@ use log::{Metadata, Record};
 use crate::autocomplete::Autocomplete;
 use crate::history::History;
 use crate::*;
-use embassy_sync::pipe::Pipe;
+use embassy_sync::pipe::{Pipe, Reader, Writer};
 
-pub type ShellResult = Result<(), ShellError>;
 pub type SpinResult = Result<(), ShellError>;
 // pub type PollResult<'a, S> = Result<Option<Input<'a>>, ShellError>;
 type CS = embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
-pub struct AShell<S, A, H, const CMD_LEN: usize, const LOG_LEN:usize> 
+pub struct AShell<A, H, const CMD_LEN: usize, const LOG_LEN:usize> 
 where 
-    S: AsyncRead + AsyncWrite,
+    // S: AsyncRead + AsyncWrite,
     A: Autocomplete<CMD_LEN>,
     H: History<CMD_LEN>
 {
-    serial: S,
     autocomplete: A,
     history: H,
-    // env: Environment,
     editor_buf: Vec<u8, CMD_LEN>,
     log_buffer: Pipe<CS,LOG_LEN>,
     editor_len: usize,
@@ -35,15 +32,13 @@ where
     history_on: bool,
 }
 
-impl<S, A, H, const CMD_LEN: usize, const LOG_LEN: usize> AShell<S, A, H, CMD_LEN, LOG_LEN>
+impl<A, H, const CMD_LEN: usize, const LOG_LEN: usize> AShell<A, H, CMD_LEN, LOG_LEN>
 where
-    S: AsyncRead + AsyncWrite,
     A: Autocomplete<CMD_LEN>,
     H: History<CMD_LEN>,
 {
-    pub fn new(serial: S, autocomplete: A, history: H) -> Self {
+    pub fn new(autocomplete: A, history: H) -> Self {
         Self {
-            serial,
             autocomplete,
             history,
             // env,
@@ -74,8 +69,15 @@ where
         &mut self.history
     }
 
-    pub fn get_serial_mut(&mut self) -> &mut S {
-        &mut self.serial
+    // pub fn get_serial_mut(&mut self) -> &mut S {
+        // &mut self.serial
+    // }
+
+    pub fn reader(&self) -> Reader<'_, CS, LOG_LEN> {
+        self.log_buffer.reader()
+    }
+    pub fn writer(&self) -> Writer<'_, CS, LOG_LEN> {
+        self.log_buffer.writer()
     }
 
     pub fn reset(&mut self) {
@@ -109,31 +111,33 @@ where
     //         };
     //     }
     // }
-    pub async fn tx_fut(&mut self)
-    {
-        let mut log_buf:[u8;32] = [0;32];
-        loop {
-            let len = self.log_buffer.read(&mut log_buf[..]).await;
-            self.serial.write_all(&log_buf[..len]).await.unwrap();
-        }
+    
+    // pub async fn tx_fut(&mut self)
+    // {
+        // let mut log_buf:[u8;32] = [0;32];
+        // loop {
+            // let len = self.log_buffer.read(&mut log_buf[..]).await;
+            // self.serial.write_all(&log_buf[..len]).await.unwrap();
+        // }
+    // }
 
-    }
-
-    pub async fn rx_fut(&mut self, env: &mut impl Environment<S, A, H, CMD_LEN, LOG_LEN>) -> ShellResult
+    pub async fn feed(&mut self, env: &mut impl Environment<A, H, CMD_LEN, LOG_LEN>, byte:u8) -> ShellResult
     {
         const ANSI_ESCAPE: u8 = b'[';
 
-        let mut buf:[u8;32] = [0; 32];
-        loop {
-            let rx_len = self.serial.read(&mut buf).await.unwrap();
+        // let mut buf:[u8;32] = [0; 32];
+        // loop {
+            // let rx_len = self.serial.read(&mut buf).await.unwrap();
 
-            for byte in &buf[..rx_len] {
-                match *byte {
+            // for byte in &buf[..rx_len] {
+                match byte {
                     ANSI_ESCAPE if self.escape => {
                         self.control = true;
+                        Ok(())
                     }
                     control::ESC => {
                         self.escape = true;
+                        Ok(())
                     }
                     control_byte if self.control => {
                         self.escape = false;
@@ -144,25 +148,26 @@ where
                         const RIGHT: u8 = 0x43;
                         const LEFT: u8 = 0x44;
                         match control_byte {
-                            LEFT => self.dpad_left().await?,
-                            RIGHT => self.dpad_right().await?,
-                            UP => self.dpad_up().await?,
-                            DOWN => self.dpad_down().await?,
-                            _ => {}
+                            LEFT => self.dpad_left().await,
+                            RIGHT => self.dpad_right().await,
+                            UP => self.dpad_up().await,
+                            DOWN => self.dpad_down().await,
+                            _ => {Ok(())}
                         }
                     }
                     _ if self.escape => {
                         self.escape = false;
                         self.control = false;
+                        Ok(())
                     }
                     control::TAB => {
                         if self.autocomplete_on {
-                            self.suggest().await?
+                            self.suggest().await
                         } else {
-                            self.bell().await?
+                            self.bell().await
                         }
                     }
-                    control::DEL | control::BS => self.delete_at_cursor().await?,
+                    control::DEL | control::BS => self.delete_at_cursor().await,
                     control::CR => {
                         let mut cmd_buf = [0; CMD_LEN];
                         cmd_buf[..self.editor_len].copy_from_slice(&self.editor_buf[..self.editor_len]);
@@ -174,19 +179,19 @@ where
                         self.editor_len = 0;
                         self.cursor = 0;
                         let (cmd, args) = line.split_once(" ").unwrap_or((line, &""));
-                        env.command(self, cmd, args).await?;
+                        env.command(self, cmd, args).await
                     }
                     _ => {
-                        let ch = *byte as char;
+                        let ch = byte as char;
                         if ch.is_ascii_control() {
-                            env.control(self, *byte).await?;
+                            env.control(self, byte).await
                         } else {
-                            self.write_at_cursor(*byte).await?;
+                            self.write_at_cursor(byte).await
                         }
                     }
-                };
-            }
-        }
+                }
+            // }
+        // }
     }
 
     pub fn clear(&mut self) -> ShellResult {
@@ -198,10 +203,8 @@ where
 
     pub async fn bell(&mut self) -> ShellResult {
         // block!(self.serial.write(control::BELL)).map_err(ShellError::WriteError)
-        match self.serial.write(&[control::BELL as u8]).await {
-            Ok(_) => Ok(()),
-            Err(_) => Err(ShellError::WriteError)
-        }
+        self.log_buffer.write(&[control::BELL as u8]).await;
+        Ok(())
     }
 
     pub fn push_history(&mut self, line: &str) -> ShellResult {
@@ -214,7 +217,7 @@ where
         if self.cursor == self.editor_buf.len() {
             self.bell().await?;
         } else if self.cursor < self.editor_len {
-            self.serial.write(&[byte]).await.map_err(|_| ShellError::WriteError)?;
+            self.log_buffer.write(&[byte]).await;
 
             self.editor_buf
                 .copy_within(self.cursor..self.editor_len, self.cursor + 1);
@@ -226,13 +229,13 @@ where
             // for b in &self.editor_buf[self.cursor..self.editor_len] {
                 // self.serial.write(*b).await.map_err(ShellError::WriteError)?;
             // }
-            self.serial.write(&self.editor_buf[self.cursor..self.editor_len]).await.map_err(|_| ShellError::WriteError)?;
+            self.log_buffer.write(&self.editor_buf[self.cursor..self.editor_len]).await;
             self.write_str("\x1b[u")?;
         } else {
             self.editor_buf[self.cursor] = byte;
             self.cursor += 1;
             self.editor_len += 1;
-            self.serial.write(&[byte]).await.map_err(|_| ShellError::WriteError)?;
+            self.log_buffer.write(&[byte]).await;
         }
         Ok(())
     }
@@ -249,7 +252,7 @@ where
             // for b in &self.editor_buf[self.cursor..self.editor_len] {
                 // self.serial.write(*b).await.map_err(|_| ShellError::WriteError)?;
             // }
-            self.serial.write(&self.editor_buf[self.cursor..self.editor_len]).await.map_err(|_| ShellError::WriteError)?;
+            self.log_buffer.write(&self.editor_buf[self.cursor..self.editor_len]).await;
             self.write_str("\x1b[u")?;
         } else {
             self.cursor -= 1;
@@ -329,43 +332,58 @@ where
     }
 }
 
-impl<S, A, H, const CMD_LEN: usize, const LOG_LEN: usize> core::fmt::Write for AShell<S, A, H, CMD_LEN, LOG_LEN>
+impl<A, H, const CMD_LEN: usize, const LOG_LEN: usize> core::fmt::Write for AShell<A, H, CMD_LEN, LOG_LEN>
 where
-    S: AsyncRead + AsyncWrite,
+    // S: AsyncRead + AsyncWrite,
     A: Autocomplete<CMD_LEN>,
     H: History<CMD_LEN>,
 {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        self.log_buffer.try_write(s.as_bytes())?;
+        self.log_buffer.try_write(s.as_bytes());
         Ok(())
     }
 }
 
-impl<S, A, H, const CMD_LEN:usize, const LOG_SIZE:usize> log::Log for AShell<S, A, H, CMD_LEN, LOG_SIZE> 
-where
-    S: AsyncRead + AsyncWrite + Send + Sync,
-    A: Autocomplete<CMD_LEN> + Send + Sync,
-    H: History<CMD_LEN> + Send + Sync,
-{
+// impl<A, H, const CMD_LEN:usize, const LOG_SIZE:usize> log::Log for AShell<A, H, CMD_LEN, LOG_SIZE> 
+// where
+//     // S: AsyncRead + AsyncWrite + Send + Sync,
+//     A: Autocomplete<CMD_LEN> + Send + Sync,
+//     H: History<CMD_LEN> + Send + Sync,
+// {
+//     fn enabled(&self, _metadata: &Metadata) -> bool {
+//         true
+//     }
+
+//     fn log(&self, record: &Record) {
+//         if self.enabled(record.metadata()) {
+//             let _ = write!(Writer(&self.log_buffer), "{}\r\n", record.args());
+//             // let _ = write!(self, "{}\r\n", record.args());
+//         }
+//     }
+
+//     fn flush(&self) {}
+// }
+
+pub struct LogWriter<'d, const N: usize>(pub Writer<'d, CS, N>);
+
+impl<'d, const N: usize> core::fmt::Write for LogWriter<'d, N> {
+    fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
+        let _ = self.0.try_write(s.as_bytes());
+        Ok(())
+    }
+}
+
+impl<'d, const N:usize> log::Log for LogWriter<'d, N> {
     fn enabled(&self, _metadata: &Metadata) -> bool {
         true
     }
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            let _ = write!(Writer(&self.log_buffer), "{}\r\n", record.args());
-            // let _ = write!(self, "{}\r\n", record.args());
+            //TODO:
+            let _ = self.0.try_write(record.args().as_str().expect(" ").as_bytes());
         }
     }
 
     fn flush(&self) {}
-}
-
-struct Writer<'d, const N: usize>(&'d Pipe<CS, N>);
-
-impl<'d, const N: usize> core::fmt::Write for Writer<'d, N> {
-    fn write_str(&mut self, s: &str) -> Result<(), core::fmt::Error> {
-        let _ = self.0.try_write(s.as_bytes());
-        Ok(())
-    }
 }
