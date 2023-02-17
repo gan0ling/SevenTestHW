@@ -6,8 +6,8 @@ use ashell::{
             autocomplete::{StaticAutocomplete, Autocomplete}, 
             history::{LRUHistory, History}, AShell};
 
-use embassy_rp::Peripherals;
-use heapless::Vec;
+
+
 
 
 
@@ -38,7 +38,7 @@ where
 
     async fn command(
         &mut self,
-        shell: &mut AShell<A, H, CMD_LEN, LOG_LEN>,
+        _shell: &mut AShell<A, H, CMD_LEN, LOG_LEN>,
         cmd: &str,
         args: &str,
     ) -> ShellResult 

@@ -11,18 +11,18 @@ mod usb_shell;
 mod pwmin_pio;
 
 
-use embassy_executor::_export::StaticCell;
 
-use embassy_rp::gpio::{Pin};
+
+
 use embassy_executor::Spawner;
 use embassy_rp::interrupt;
-use embassy_rp::peripherals::USB;
+
 use embassy_rp::usb::Driver as USBDriver;
 
-use embassy_rp::pio::PioPeripherial;
 
-use embassy_rp::uart::{BufferedUart, Config};
-use embedded_io::asynch::{Read as AsyncRead, Write};
+
+
+
 use {defmt_rtt as _, panic_probe as _};
 // use ashell::{autocomplete::{StaticAutocomplete}, history::{LRUHistory}, AShell};
 // use shell::{SevenShell, SevenShellEnv, CMD_LIST};
@@ -48,7 +48,7 @@ macro_rules! singleton {
 // }
 
 #[embassy_executor::main]
-async fn main(spawner: Spawner) {
+async fn main(_spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // init uart

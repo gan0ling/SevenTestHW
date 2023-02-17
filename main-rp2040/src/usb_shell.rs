@@ -1,4 +1,4 @@
-use core::fmt::Write as _;
+
 use embassy_futures::select::{select, Either};
 use embassy_futures::join::join;
 // use embassy_sync::pipe::Pipe;
@@ -76,10 +76,10 @@ impl UsbShell {
 
         // Create embassy-usb DeviceBuilder using the driver and config.
         // It needs some buffers for building the descriptors.
-        let mut device_descriptor = [0; 256];
-        let mut config_descriptor = [0; 256];
-        let mut bos_descriptor = [0; 256];
-        let mut control_buf = [0; 64];
+        let _device_descriptor = [0; 256];
+        let _config_descriptor = [0; 256];
+        let _bos_descriptor = [0; 256];
+        let _control_buf = [0; 64];
 
         // let mut state = State::new();
 

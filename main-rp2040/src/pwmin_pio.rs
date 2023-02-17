@@ -1,14 +1,14 @@
 use {defmt_rtt as _, panic_probe as _};
 use embassy_rp::gpio::{AnyPin, Pin};
-use embassy_rp::pio::{Pio0, Pio1, PioStateMachine, PioStateMachineInstance, 
-                      ShiftDirection, Sm0, Sm1, Sm2, Sm3,FifoJoin};
+use embassy_rp::pio::{PioStateMachine, 
+                      ShiftDirection,FifoJoin};
 use embassy_rp::pio_instr_util;
 use embassy_rp::relocate::RelocatedProgram;
 use {defmt_rtt as _, panic_probe as _};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::pubsub::WaitResult;
 use embassy_sync::pubsub::PubSubChannel;
-use embassy_time::{Duration, Timer};
+
 
 const SM_CLK:u32 = 125_000_000; //125MHz
 static PWM_PUBSUB_CHANNEL:PubSubChannel::<ThreadModeRawMutex, PwmInfo, 200, 1, 5> = PubSubChannel::new();
