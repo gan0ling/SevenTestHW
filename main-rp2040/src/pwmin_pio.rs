@@ -8,6 +8,7 @@ use {defmt_rtt as _, panic_probe as _};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::pubsub::WaitResult;
 use embassy_sync::pubsub::PubSubChannel;
+use embassy_time::{Duration, Timer};
 
 const SM_CLK:u32 = 125_000_000; //125MHz
 static PWM_PUBSUB_CHANNEL:PubSubChannel::<ThreadModeRawMutex, PwmInfo, 200, 1, 5> = PubSubChannel::new();
@@ -92,11 +93,11 @@ macro_rules! impl_pwmin_pio {
     };
 }
 
-impl_pwmin_pio!(Pio0, Sm0, Pio0_Sm0_pwmin_task);
-impl_pwmin_pio!(Pio0, Sm1, Pio0_Sm1_pwmin_task);
-impl_pwmin_pio!(Pio0, Sm2, Pio0_Sm2_pwmin_task);
-impl_pwmin_pio!(Pio0, Sm3, Pio0_Sm3_pwmin_task);
-impl_pwmin_pio!(Pio1, Sm0, Pio1_Sm0_pwmin_task);
+impl_pwmin_pio!(Pio0, Sm0, pio0_sm0_pwmin_task);
+impl_pwmin_pio!(Pio0, Sm1, pio0_sm1_pwmin_task);
+impl_pwmin_pio!(Pio0, Sm2, pio0_sm2_pwmin_task);
+impl_pwmin_pio!(Pio0, Sm3, pio0_sm3_pwmin_task);
+impl_pwmin_pio!(Pio1, Sm0, pio1_sm0_pwmin_task);
 
 // #[embassy_executor::task]
 // pub async fn pio0_task_sm0(mut sm: PioStateMachineInstance<Pio0, Sm0>, pin:AnyPin) {

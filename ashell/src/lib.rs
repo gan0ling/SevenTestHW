@@ -2,6 +2,7 @@
 #![deny(unsafe_code)]
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
+#![feature(byte_slice_trim_ascii)]
 
 // extern crate embedded_hal as hal;
 extern crate heapless;

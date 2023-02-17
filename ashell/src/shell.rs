@@ -14,6 +14,8 @@ pub type SpinResult = Result<(), ShellError>;
 // pub type PollResult<'a, S> = Result<Option<Input<'a>>, ShellError>;
 type CS = embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
+const SHELL_PROMPT:&str = "#>";
+
 pub struct AShell<A, H, const CMD_LEN: usize, const LOG_LEN:usize> 
 where 
     // S: AsyncRead + AsyncWrite,
@@ -22,7 +24,8 @@ where
 {
     autocomplete: A,
     history: H,
-    editor_buf: Vec<u8, CMD_LEN>,
+    // editor_buf: Vec<u8, CMD_LEN>,
+    editor_buf: [u8; CMD_LEN],
     log_buffer: &'static Pipe<CS,LOG_LEN>,
     editor_len: usize,
     cursor: usize,
@@ -37,13 +40,14 @@ where
     A: Autocomplete<CMD_LEN>,
     H: History<CMD_LEN>,
 {
-    pub fn new(autocomplete: A, history: H, log_buffer: &'static Pipe<CS, LOG_LEN>) -> Self {
+    pub async fn new(autocomplete: A, history: H, log_buffer: &'static Pipe<CS, LOG_LEN>) -> Self {
+        log_buffer.write(SHELL_PROMPT.as_bytes()).await;
         Self {
             autocomplete,
             history,
             // env,
             cursor: 0,
-            editor_buf: Vec::new(),
+            editor_buf: [0;CMD_LEN],
             log_buffer,
             editor_len: 0,
             autocomplete_on: true,
@@ -169,17 +173,28 @@ where
                     }
                     control::DEL | control::BS => self.delete_at_cursor().await,
                     control::CR => {
-                        let mut cmd_buf = [0; CMD_LEN];
-                        cmd_buf[..self.editor_len].copy_from_slice(&self.editor_buf[..self.editor_len]);
-                        // let line = from_utf8(&self.editor_buf[..self.editor_len])?;
-                        let line = from_utf8(&cmd_buf[..self.editor_len])?;
-                        self.history
-                            .push(line)
-                            .map_err(|_| ShellError::HistoryError)?;
-                        self.editor_len = 0;
-                        self.cursor = 0;
-                        let (cmd, args) = line.split_once(" ").unwrap_or((line, &""));
-                        env.command(self, cmd, args).await
+                        let line = self.editor_buf[..self.editor_len].trim_ascii();
+                        // log::info!("\r\n\t{}-{:?}", line.len(), from_utf8(line));
+                        let ret = if line.len() > 0  {
+                            let mut cmd_buf = [0; CMD_LEN];
+                            cmd_buf[..line.len()].copy_from_slice(line);
+                            let line_str = from_utf8(&cmd_buf[..line.len()])?;
+                            self.history
+                                .push(line_str)
+                                .map_err(|_| ShellError::HistoryError)?;
+                            self.editor_len = 0;
+                            self.cursor = 0;
+                            let (cmd, args) = line_str.split_once(" ").unwrap_or((line_str, &""));
+                            //
+                            self.log_buffer.write("\r\n\t".as_bytes()).await;
+                            env.command(self, cmd, args).await
+                        } else
+                        {
+                            Ok(())
+                        };
+                        //write prompt
+                        self.log_buffer.write(SHELL_PROMPT.as_bytes()).await;
+                        ret
                     }
                     _ => {
                         let ch = byte as char;
@@ -233,6 +248,7 @@ where
             self.write_str("\x1b[u")?;
         } else {
             self.editor_buf[self.cursor] = byte;
+            // self.editor_buf.push(byte);
             self.cursor += 1;
             self.editor_len += 1;
             self.log_buffer.write(&[byte]).await;
@@ -322,7 +338,8 @@ where
         if cursor > 0 {
             write!(self, "\x1b[{}D", cursor)?;
         }
-
+        //write prompt
+        // write!(self, "{}", SHELL_PROMPT)?;
         let bytes = line.as_bytes();
         self.editor_len = bytes.len();
         self.cursor = bytes.len();

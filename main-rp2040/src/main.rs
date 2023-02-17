@@ -70,18 +70,17 @@ async fn main(spawner: Spawner) {
     // init SevenShell
     let history = LRUHistory::default();
     let completer = StaticAutocomplete(CMD_LIST);
-    let mut shell:SevenShell = AShell::new(completer, history, &mylog::LOG_PIPE);
+    let mut shell:SevenShell = AShell::new(completer, history, &mylog::LOG_PIPE).await;
 
     //init pio
     let pio0 = p.PIO0;
     let pio1 = p.PIO1;
     let (_, sm0, _sm1, _sm2, _sm3, ..) = pio0.split();
     let (_, _pio1_sm0, ..) = pio1.split();
-
     // spawner.spawn(shell_task(spawner, rx, tx)).unwrap();
     // spawner.spawn(shell_task(uart)).unwrap();
     spawner.spawn(mylog::log_task(tx));
-    spawner.spawn(pwmin_pio::Pio0_Sm0_pwmin_task(sm0, p.PIN_0.degrade())).unwrap();
+    spawner.spawn(pwmin_pio::pio0_sm0_pwmin_task(sm0, p.PIN_0.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm1(sm1, p.PIN_1.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm2(sm2, p.PIN_2.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm3(sm3, p.PIN_3.degrade())).unwrap();

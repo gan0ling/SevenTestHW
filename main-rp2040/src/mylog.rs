@@ -34,7 +34,7 @@ impl log::Log for MyLogger {
 
     fn log(&self, record: &log::Record) {
        if self.enabled(record.metadata()) {
-            let _ = write!(MyWriter(&LOG_PIPE), "{}\n", record.args());
+            let _ = write!(MyWriter(&LOG_PIPE), "{}\r\n", record.args());
         } 
     }
 
