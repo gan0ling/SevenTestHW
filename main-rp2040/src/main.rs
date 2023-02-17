@@ -24,8 +24,8 @@ use embassy_rp::pio::PioPeripherial;
 use embassy_rp::uart::{BufferedUart, Config};
 use embedded_io::asynch::{Read as AsyncRead, Write};
 use {defmt_rtt as _, panic_probe as _};
-use ashell::{autocomplete::{StaticAutocomplete}, history::{LRUHistory}, AShell};
-use shell::{SevenShell, SevenShellEnv, CMD_LIST};
+// use ashell::{autocomplete::{StaticAutocomplete}, history::{LRUHistory}, AShell};
+// use shell::{SevenShell, SevenShellEnv, CMD_LIST};
 
 macro_rules! singleton {
     ($val:expr) => {{
@@ -81,19 +81,19 @@ async fn main(spawner: Spawner) {
     let usb_shell = usb_shell::UsbShell;
 
     //init pio
-    let pio0 = p.PIO0;
-    let pio1 = p.PIO1;
-    let (_, sm0, _sm1, _sm2, _sm3, ..) = pio0.split();
-    let (_, _pio1_sm0, ..) = pio1.split();
+    // let pio0 = p.PIO0;
+    // let pio1 = p.PIO1;
+    // let (_, sm0, _sm1, _sm2, _sm3, ..) = pio0.split();
+    // let (_, _pio1_sm0, ..) = pio1.split();
     // spawner.spawn(shell_task(spawner, rx, tx)).unwrap();
     // spawner.spawn(shell_task(uart)).unwrap();
     // spawner.spawn(mylog::log_task(tx));
-    spawner.spawn(pwmin_pio::pio0_sm0_pwmin_task(sm0, p.PIN_0.degrade())).unwrap();
+    // spawner.spawn(pwmin_pio::pio0_sm0_pwmin_task(sm0, p.PIN_0.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm1(sm1, p.PIN_1.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm2(sm2, p.PIN_2.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm3(sm3, p.PIN_3.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio1_task_sm0(pio1_sm0, p.PIN_4.degrade())).unwrap();
-    spawner.spawn(pwmin_pio::pwmin_log_task()).unwrap();
+    // spawner.spawn(pwmin_pio::pwmin_log_task()).unwrap();
     // let mut counter = 0;
 
     // loop {

@@ -14,7 +14,7 @@ pub type SpinResult = Result<(), ShellError>;
 // pub type PollResult<'a, S> = Result<Option<Input<'a>>, ShellError>;
 type CS = embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
-const SHELL_PROMPT:&str = "#>";
+const SHELL_PROMPT:&str = "\r\n#>";
 
 pub struct AShell<A, H, const CMD_LEN: usize, const LOG_LEN:usize> 
 where 
@@ -186,7 +186,7 @@ where
                             self.cursor = 0;
                             let (cmd, args) = line_str.split_once(" ").unwrap_or((line_str, &""));
                             //
-                            self.log_buffer.write("\r\n\t".as_bytes()).await;
+                            // self.log_buffer.write("\r\n\t".as_bytes()).await;
                             env.command(self, cmd, args).await
                         } else
                         {

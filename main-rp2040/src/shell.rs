@@ -1,7 +1,13 @@
 #![feature(async_fn_in_trait)]
 #![allow(incomplete_features)]
 
-use ashell::{ShellResult,Environment, autocomplete::{StaticAutocomplete, Autocomplete}, history::{LRUHistory, History}, AShell};
+use ashell::{
+            ShellResult,Environment, 
+            autocomplete::{StaticAutocomplete, Autocomplete}, 
+            history::{LRUHistory, History}, AShell};
+
+use embassy_rp::Peripherals;
+use heapless::Vec;
 
 
 
@@ -39,7 +45,17 @@ where
     {
         match cmd {
             "help" => log::info!("help for cmds"),
-            "pwmin" => log::info!("pwmin test"),
+            "pwmin" => {
+                //create pwmin task
+                // let mut pins :[u8;8]= [0xFF;8];
+                args.split_ascii_whitespace().map(|a| {a.parse::<u32>().unwrap()}).for_each(|pin| {
+                        log::info!("create pio task for pin:{}", pin);
+                });
+                // log::info!("pins:{:?}-{:?}", pins.next(), pins.next());
+                // let p = unsafe {Peripherals::steal()};
+                // let pio0 = p.PIO0;
+                // let pio1 = p.PIO1;
+            },
             _ => log::info!("unknown cmd"),
         }
         Ok(())

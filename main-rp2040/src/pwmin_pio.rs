@@ -32,72 +32,126 @@ impl Default for PwmInfo
         }
     }
 }
+pub async fn pwmin_task(mut sm: impl PioStateMachine, pin:AnyPin) {
+    //setup msg
+    let mut msg:PwmInfo = PwmInfo::default();
+    msg.pin = pin.pin() as u32;
+    let publisher = PWM_PUBSUB_CHANNEL.publisher().unwrap();
 
-macro_rules! impl_pwmin_pio {
-    ($pio:ident, $sm:ident, $fn:ident) => {
-        #[embassy_executor::task]
-        pub async fn $fn(mut sm: PioStateMachineInstance<$pio, $sm>, pin:AnyPin) {
-            //setup msg
-            let mut msg:PwmInfo = PwmInfo::default();
-            msg.pin = pin.pin() as u32;
-            let publisher = PWM_PUBSUB_CHANNEL.publisher().unwrap();
+    // setup sm
+    let _wait_irq = sm.sm_no();
+    let prg = pio_proc::pio_file!("./src/PwmIn.pio");
+    let relocated = RelocatedProgram::new(&prg.program);
 
-            // setup sm
-            let _wait_irq = sm.sm_no();
-            let prg = pio_proc::pio_file!("./src/PwmIn.pio");
-            let relocated = RelocatedProgram::new(&prg.program);
+    let pin = sm.make_pio_pin(pin);
+    sm.set_jmp_pin(pin.pin());
+    sm.set_in_base_pin(&pin);
 
-            let pin = sm.make_pio_pin(pin);
-            sm.set_jmp_pin(pin.pin());
-            sm.set_in_base_pin(&pin);
+    sm.write_instr(relocated.origin() as usize, relocated.code());
+    pio_instr_util::exec_jmp(&mut sm, relocated.origin());
+    let clkdiv:u32 = (125e6 / (SM_CLK as f32)) as u32;
+    sm.set_clkdiv(clkdiv << 8);
+    let pio::Wrap { source, target} = relocated.wrap();
+    sm.set_wrap(source, target);
 
-            sm.write_instr(relocated.origin() as usize, relocated.code());
-            pio_instr_util::exec_jmp(&mut sm, relocated.origin());
-            let clkdiv:u32 = (125e6 / (SM_CLK as f32)) as u32;
-            sm.set_clkdiv(clkdiv << 8);
-            let pio::Wrap { source, target} = relocated.wrap();
-            sm.set_wrap(source, target);
+    sm.set_autopull(false);
+    sm.set_fifo_join(FifoJoin::RxOnly);
+    sm.set_in_shift_dir(ShiftDirection::Left);
+    // sm.set_pull_threshold(2);
+    sm.clear_fifos();
+    sm.set_enable(true);
 
-            sm.set_autopull(false);
-            sm.set_fifo_join(FifoJoin::RxOnly);
-            sm.set_in_shift_dir(ShiftDirection::Left);
-            // sm.set_pull_threshold(2);
-            sm.clear_fifos();
-            sm.set_enable(true);
-
-            let mut high_period:u32 = 0; 
-            let mut low_period:u32 = 0; 
-            let mut tmp_period_1:u32 = 0;
-            let mut tmp_period_2:u32 = 0;
-            loop {
-                // sm.wait_irq(wait_irq).await;
-                tmp_period_1 = sm.wait_pull().await;
-                tmp_period_2 = sm.wait_pull().await;
-                // sm.clear_fifos();
-                if tmp_period_1 & 0xF0000000 != 0 {
-                    //tmp_period_1 is low_period
-                    high_period = tmp_period_2 * 2;
-                    low_period = tmp_period_1 * 2;
-                } else {
-                    //tmp_period_1 is high_period
-                    low_period = tmp_period_2 * 2;
-                    high_period = tmp_period_1 * 2;
-                }
-                if ((high_period / 10) != (msg.high_period / 10)) || ((low_period / 10) != (msg.low_period / 10)) {
-                    msg.high_period = high_period;
-                    msg.low_period = low_period;
-                    publisher.publish_immediate(msg);
-                }
-            }
+    let mut high_period:u32 = 0; 
+    let mut low_period:u32 = 0; 
+    let mut tmp_period_1:u32 = 0;
+    let mut tmp_period_2:u32 = 0;
+    loop {
+        // sm.wait_irq(wait_irq).await;
+        tmp_period_1 = sm.wait_pull().await;
+        tmp_period_2 = sm.wait_pull().await;
+        // sm.clear_fifos();
+        if tmp_period_1 & 0xF0000000 != 0 {
+            //tmp_period_1 is low_period
+            high_period = tmp_period_2 * 2;
+            low_period = tmp_period_1 * 2;
+        } else {
+            //tmp_period_1 is high_period
+            low_period = tmp_period_2 * 2;
+            high_period = tmp_period_1 * 2;
         }
-    };
+        if ((high_period / 10) != (msg.high_period / 10)) || ((low_period / 10) != (msg.low_period / 10)) {
+            msg.high_period = high_period;
+            msg.low_period = low_period;
+            publisher.publish_immediate(msg);
+        }
+    }
 }
 
-impl_pwmin_pio!(Pio0, Sm0, pio0_sm0_pwmin_task);
-impl_pwmin_pio!(Pio0, Sm1, pio0_sm1_pwmin_task);
-impl_pwmin_pio!(Pio0, Sm2, pio0_sm2_pwmin_task);
-impl_pwmin_pio!(Pio0, Sm3, pio0_sm3_pwmin_task);
-impl_pwmin_pio!(Pio1, Sm0, pio1_sm0_pwmin_task);
+// macro_rules! impl_pwmin_pio {
+//     ($pio:ident, $sm:ident, $fn:ident) => {
+//         #[embassy_executor::task]
+//         pub async fn $fn(mut sm: PioStateMachineInstance<$pio, $sm>, pin:AnyPin) {
+//             //setup msg
+//             let mut msg:PwmInfo = PwmInfo::default();
+//             msg.pin = pin.pin() as u32;
+//             let publisher = PWM_PUBSUB_CHANNEL.publisher().unwrap();
+
+//             // setup sm
+//             let _wait_irq = sm.sm_no();
+//             let prg = pio_proc::pio_file!("./src/PwmIn.pio");
+//             let relocated = RelocatedProgram::new(&prg.program);
+
+//             let pin = sm.make_pio_pin(pin);
+//             sm.set_jmp_pin(pin.pin());
+//             sm.set_in_base_pin(&pin);
+
+//             sm.write_instr(relocated.origin() as usize, relocated.code());
+//             pio_instr_util::exec_jmp(&mut sm, relocated.origin());
+//             let clkdiv:u32 = (125e6 / (SM_CLK as f32)) as u32;
+//             sm.set_clkdiv(clkdiv << 8);
+//             let pio::Wrap { source, target} = relocated.wrap();
+//             sm.set_wrap(source, target);
+
+//             sm.set_autopull(false);
+//             sm.set_fifo_join(FifoJoin::RxOnly);
+//             sm.set_in_shift_dir(ShiftDirection::Left);
+//             // sm.set_pull_threshold(2);
+//             sm.clear_fifos();
+//             sm.set_enable(true);
+
+//             let mut high_period:u32 = 0; 
+//             let mut low_period:u32 = 0; 
+//             let mut tmp_period_1:u32 = 0;
+//             let mut tmp_period_2:u32 = 0;
+//             loop {
+//                 // sm.wait_irq(wait_irq).await;
+//                 tmp_period_1 = sm.wait_pull().await;
+//                 tmp_period_2 = sm.wait_pull().await;
+//                 // sm.clear_fifos();
+//                 if tmp_period_1 & 0xF0000000 != 0 {
+//                     //tmp_period_1 is low_period
+//                     high_period = tmp_period_2 * 2;
+//                     low_period = tmp_period_1 * 2;
+//                 } else {
+//                     //tmp_period_1 is high_period
+//                     low_period = tmp_period_2 * 2;
+//                     high_period = tmp_period_1 * 2;
+//                 }
+//                 if ((high_period / 10) != (msg.high_period / 10)) || ((low_period / 10) != (msg.low_period / 10)) {
+//                     msg.high_period = high_period;
+//                     msg.low_period = low_period;
+//                     publisher.publish_immediate(msg);
+//                 }
+//             }
+//         }
+//     };
+// }
+
+// impl_pwmin_pio!(Pio0, Sm0, pio0_sm0_pwmin_task);
+// impl_pwmin_pio!(Pio0, Sm1, pio0_sm1_pwmin_task);
+// impl_pwmin_pio!(Pio0, Sm2, pio0_sm2_pwmin_task);
+// impl_pwmin_pio!(Pio0, Sm3, pio0_sm3_pwmin_task);
+// impl_pwmin_pio!(Pio1, Sm0, pio1_sm0_pwmin_task);
 
 // #[embassy_executor::task]
 // pub async fn pio0_task_sm0(mut sm: PioStateMachineInstance<Pio0, Sm0>, pin:AnyPin) {
