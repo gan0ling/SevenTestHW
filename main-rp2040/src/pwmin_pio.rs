@@ -32,6 +32,11 @@ impl Default for PwmInfo
         }
     }
 }
+
+pub struct PwmInShellEnv {
+    
+}
+
 pub async fn pwmin_task(mut sm: impl PioStateMachine, pin:AnyPin) {
     //setup msg
     let mut msg:PwmInfo = PwmInfo::default();
