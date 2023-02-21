@@ -125,7 +125,8 @@ where
         // }
     // }
 
-    pub async fn feed(&mut self, env: &mut impl Environment<A, H, CMD_LEN, LOG_LEN>, byte:u8) -> ShellResult
+    // pub async fn feed(&mut self, env: &mut impl Environment<A, H, CMD_LEN, LOG_LEN>, byte:u8) -> ShellResult
+    pub async fn feed(&mut self, env: &mut impl Environment, byte:u8) -> ShellResult
     {
         const ANSI_ESCAPE: u8 = b'[';
 
@@ -186,8 +187,9 @@ where
                             self.cursor = 0;
                             let (cmd, args) = line_str.split_once(" ").unwrap_or((line_str, &""));
                             //
-                            // self.log_buffer.write("\r\n\t".as_bytes()).await;
-                            env.command(self, cmd, args).await
+                            self.log_buffer.write("\r\n".as_bytes()).await;
+                            // env.command(self, cmd, args).await
+                            env.command(cmd, args).await
                         } else
                         {
                             Ok(())
@@ -199,7 +201,8 @@ where
                     _ => {
                         let ch = byte as char;
                         if ch.is_ascii_control() {
-                            env.control(self, byte).await
+                            // env.control(self, byte).await
+                            env.control(byte).await
                         } else {
                             self.write_at_cursor(byte).await
                         }

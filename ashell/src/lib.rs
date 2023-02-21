@@ -27,6 +27,8 @@ pub enum ShellError
     ReadError,
     WriteError,
     HistoryError,
+    CommandNotFound,
+    KeyNotFound,
     FormatError(fmt::Error),
     ExecuteError(i32),
     BadInputError(Utf8Error),
@@ -58,22 +60,23 @@ pub enum Input<'a> {
     Command((&'a str, &'a str)),
 }
 
-pub trait Environment<A, H, const CMD_LEN: usize, const LOG_SIZE: usize>
-where
+// pub trait Environment<A, H, const CMD_LEN: usize, const LOG_SIZE: usize>
+// where
     // S: AsyncRead + AsyncWrite,
-    A: autocomplete::Autocomplete<CMD_LEN>,
-    H: history::History<CMD_LEN>,
+    // A: autocomplete::Autocomplete<CMD_LEN>,
+    // H: history::History<CMD_LEN>,
+pub trait Environment
 {
     async fn command(
         &mut self,
-        shell: &mut AShell<A, H, CMD_LEN, LOG_SIZE>,
+        // shell: &mut AShell<A, H, CMD_LEN, LOG_SIZE>,
         cmd: &str,
         args: &str,
     ) -> ShellResult;
 
     async fn control(
         &mut self, 
-        shell: &mut AShell<A, H, CMD_LEN, LOG_SIZE>, 
+        // shell: &mut AShell<A, H, CMD_LEN, LOG_SIZE>, 
         code: u8
     ) -> ShellResult;
 }

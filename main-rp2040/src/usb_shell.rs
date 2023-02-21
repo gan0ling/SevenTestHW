@@ -6,7 +6,8 @@ use embassy_usb::class::cdc_acm::{CdcAcmClass, State};
 use embassy_usb::driver::Driver;
 use embassy_usb::{Builder, Config};
 use ashell::{autocomplete::{StaticAutocomplete}, history::{LRUHistory}, AShell};
-use crate::shell::{SevenShell, SevenShellEnv, CMD_LIST};
+use embedded_hal_1::i2c::SevenBitAddress;
+use crate::shell::{SHELL_ENV, create_shell, SevenShell};
 
 use crate::mylog::LOG_PIPE;
 // use log::{Metadata, Record};
@@ -55,9 +56,11 @@ impl UsbShell {
         Self: 'd,
     {
         // init SevenShell
-        let history = LRUHistory::default();
-        let completer = StaticAutocomplete(CMD_LIST);
-        let mut shell:SevenShell = AShell::new(completer, history, &LOG_PIPE).await;
+        // let history = LRUHistory::default();
+        // let completer = StaticAutocomplete(CMD_LIST);
+        // let mut shell:SevenShell = AShell::new(completer, history, &LOG_PIPE).await;
+        let mut shell: SevenShell = create_shell().await;
+
 
         const MAX_PACKET_SIZE: u8 = 64;
         let mut config = Config::new(0xc0de, 0xcafe);
@@ -103,7 +106,7 @@ impl UsbShell {
             let shell_fut = async  {
                 let mut log_buf: [u8; MAX_PACKET_SIZE as usize] = [0; MAX_PACKET_SIZE as usize];
                 let mut recv_buf: [u8; MAX_PACKET_SIZE as usize] = [0; MAX_PACKET_SIZE as usize];
-                let mut env = SevenShellEnv::default();
+                // let mut env = SevenShellEnv::default();
                 loop {
                     class.wait_connection().await;
                     // let len = self.buffer.read(&mut log_buf[..]).await;
@@ -116,7 +119,7 @@ impl UsbShell {
                         Either::Second(Ok(n)) => {
                             //process cmd
                             for byte in &recv_buf[..n] {
-                                shell.feed(&mut env, *byte).await;
+                                unsafe {shell.feed(&mut SHELL_ENV, *byte).await;}
                             }
                         },
                         _ => {},

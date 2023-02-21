@@ -14,13 +14,21 @@ impl<const CMD_LEN: usize> Autocomplete<CMD_LEN> for NoAutocomplete {
     }
 }
 
-pub struct FnAutocomplete<const CMD_LEN: usize>(fn(&str) -> Option<String<CMD_LEN>>);
+pub struct FnAutocomplete<const CMD_LEN: usize>(pub fn(&str) -> Option<String<CMD_LEN>>);
 
 impl<const CMD_LEN: usize> Autocomplete<CMD_LEN> for FnAutocomplete<CMD_LEN> {
     fn suggest(&self, prefix: &str) -> Option<String<CMD_LEN>> {
         self.0(prefix)
     }
 }
+
+// pub struct AsyncFnAutocomplete<const CMD_LEN: usize>(pub fn(&str) -> impl Future<Output=Option<String<CMD_LEN>>>);
+
+// impl<const CMD_LEN: usize> Autocomplete<CMD_LEN> for AsyncFnAutocomplete<CMD_LEN> {
+//     fn suggest(&self, prefix: &str) -> Option<String<CMD_LEN>> {
+//         self.0(prefix)
+//     }
+// }
 
 pub struct StaticAutocomplete<const N: usize>(pub [&'static str; N]);
 
