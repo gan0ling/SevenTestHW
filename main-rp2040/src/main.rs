@@ -10,42 +10,21 @@ mod shell;
 mod usb_shell;
 mod pwmin_pio;
 
-
-
-
-
 use embassy_executor::Spawner;
 use embassy_rp::interrupt;
-
 use embassy_rp::usb::Driver as USBDriver;
-
-
-
-
-
 use {defmt_rtt as _, panic_probe as _};
-// use ashell::{autocomplete::{StaticAutocomplete}, history::{LRUHistory}, AShell};
-// use shell::{SevenShell, SevenShellEnv, CMD_LIST};
+use pwmin_pio::pwmin_register_cmd;
 
-macro_rules! singleton {
-    ($val:expr) => {{
-        type T = impl Sized;
-        static STATIC_CELL: StaticCell<T> = StaticCell::new();
-        let (x,) = STATIC_CELL.init(($val,));
-        x
-    }};
-}
-
-// #[embassy_executor::task]
-// async fn shell_task(spawner:Spawner, mut rx: BufferedUartRx<'static, UART0>, mut tx: BufferedUartTx<'static, UART0>) {
-    // embassy_usb_logger::run!(1024, log::LevelFilter::Info, driver);
-    // static LOGGER: usb_shell::UsbShell<1024> = usb_shell::UsbShell::new();
-    // static LOGGER:serial_shell::UartShell<1024> = serial_shell::UartShell::new();
-    // unsafe {
-            // let _ = ::log::set_logger_racy(&LOGGER).map(|()| log::set_max_level(log::LevelFilter::Info));
-    // }
-    // let _ = LOGGER.run(spawner, rx, tx).await;
+// macro_rules! singleton {
+//     ($val:expr) => {{
+//         type T = impl Sized;
+//         static STATIC_CELL: StaticCell<T> = StaticCell::new();
+//         let (x,) = STATIC_CELL.init(($val,));
+//         x
+//     }};
 // }
+
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -74,7 +53,7 @@ async fn main(_spawner: Spawner) {
     // let history = LRUHistory::default();
     // let completer = StaticAutocomplete(CMD_LIST);
     // let mut shell:SevenShell = AShell::new(completer, history, &mylog::LOG_PIPE).await;
-
+    pwmin_register_cmd();
     //init usb shell
     let irq = interrupt::take!(USBCTRL_IRQ);
     let driver = USBDriver::new(p.USB, irq);

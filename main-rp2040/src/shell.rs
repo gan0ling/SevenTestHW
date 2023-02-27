@@ -84,12 +84,12 @@ impl<const N: usize> SevenShellEnv<N>
 
 }
 
-pub async fn register_shell_cmd(name: &'static str, handler: CmdHandler)
+pub fn register_shell_cmd(name: &'static str, handler: CmdHandler)
 {
     unsafe { SHELL_ENV.register_cmd(name, handler); }
 }
 
-pub async fn unregister_shell_cmd(name: &'static str) {
+pub fn unregister_shell_cmd(name: &'static str) {
     unsafe { SHELL_ENV.unregister_cmd(name); }
 }
 
