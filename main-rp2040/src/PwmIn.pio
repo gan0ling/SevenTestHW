@@ -36,8 +36,8 @@ timer_lp:               ; loop for low period
 timerstop:
     mov isr ~y          ; move the value ~y to the ISR: the high period (pulsewidth) (0xFFFFFFFF-x)
     push noblock        ; push the ISR into the Rx FIFO
-;    mov isr ~x          ; move the value ~x to the ISR: the low period (0xFFFFFFFF-x)
-    mov isr x          ; move the value x to the ISR: the low period (0xFFFFFFFF-x)
+    mov isr ~x          ; move the value ~x to the ISR: the low period (0xFFFFFFFF-x)
+;    mov isr x          ; move the value x to the ISR: the low period (0xFFFFFFFF-x)
     push noblock        ; push the ISR into the Rx FIFO
 ;    irq 0 rel           ; notify the c-program via IRQ
 .wrap

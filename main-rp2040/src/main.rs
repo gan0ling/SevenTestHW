@@ -13,79 +13,85 @@ mod pwmin_pio;
 use embassy_executor::Spawner;
 use embassy_rp::interrupt;
 use embassy_rp::usb::Driver as USBDriver;
+use embassy_rp::peripherals::UART0;
+use embassy_rp::uart::{BufferedUart, BufferedUartRx, BufferedUartTx, Config};
+use embedded_io::asynch::{Read, Write};
+use embassy_rp::gpio::{AnyPin, Pin};
+use embassy_executor::_export::StaticCell;
+use embassy_rp::pio::PioPeripheral;
 use {defmt_rtt as _, panic_probe as _};
-use pwmin_pio::pwmin_register_cmd;
+use pwmin_pio::pwmin_init;
+use embassy_time::{Duration, Timer};
+use crate::shell::{SHELL_ENV, create_shell, SevenShell};
 
-// macro_rules! singleton {
-//     ($val:expr) => {{
-//         type T = impl Sized;
-//         static STATIC_CELL: StaticCell<T> = StaticCell::new();
-//         let (x,) = STATIC_CELL.init(($val,));
-//         x
-//     }};
-// }
+macro_rules! singleton {
+    ($val:expr) => {{
+        type T = impl Sized;
+        static STATIC_CELL: StaticCell<T> = StaticCell::new();
+        let (x,) = STATIC_CELL.init(($val,));
+        x
+    }};
+}
 
 
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // init uart
-    // let (tx_pin, rx_pin, uart) = (p.PIN_16, p.PIN_17, p.UART0);
-    // let irq = interrupt::take!(UART0_IRQ);
-    // let tx_buf = &mut singleton!([0u8; 128])[..];
-    // let rx_buf = &mut singleton!([0u8; 128])[..];
-    // let mut cfg = Config::default();
-    // cfg.baudrate = 921600;
-    // let uart = BufferedUart::new(uart, irq, tx_pin, rx_pin, tx_buf, rx_buf, cfg);
+    let (tx_pin, rx_pin, uart) = (p.PIN_16, p.PIN_17, p.UART0);
+    let irq = interrupt::take!(UART0_IRQ);
+    let tx_buf = &mut singleton!([0u8; 128])[..];
+    let rx_buf = &mut singleton!([0u8; 128])[..];
+    let mut cfg = Config::default();
+    cfg.baudrate = 921600;
+    let uart = BufferedUart::new(uart, irq, tx_pin, rx_pin, tx_buf, rx_buf, cfg);
+    let (mut rx, mut tx) = uart.split();
 
     // //FIXME: embassy-rp bug, we should set uartimsc.rxim to true
-    // let regs = embassy_rp::pac::UART0.uartimsc();
-    // unsafe {
-    //     regs.modify(|w| w.set_rxim(true));
-    // }
+    let regs = embassy_rp::pac::UART0.uartimsc();
+    unsafe {
+        regs.modify(|w| w.set_rxim(true));
+    }
     // //end FIXME
     
-    // let (mut rx, mut tx) = uart.split();
     //init log
     mylog::init_log();
-    // init SevenShell
-    // let history = LRUHistory::default();
-    // let completer = StaticAutocomplete(CMD_LIST);
-    // let mut shell:SevenShell = AShell::new(completer, history, &mylog::LOG_PIPE).await;
-    pwmin_register_cmd();
-    //init usb shell
-    let irq = interrupt::take!(USBCTRL_IRQ);
-    let driver = USBDriver::new(p.USB, irq);
-    let usb_shell = usb_shell::UsbShell;
+    spawner.spawn(mylog::log_task(tx));
+    log::info!("welcome to SevenTest");
+    // pwmin_init(p.PIO0, p.PIO1, p.PIN_0.degrade(), p.PIN_1.degrade(), p.PIN_2.degrade(), p.PIN_3.degrade(), p.PIN_4.degrade()).await;
+    pwmin_pio::pwmin_register_cmd();
 
+    //init usb shell
+    #[cfg(usb_shell)]
+    {
+        let irq = interrupt::take!(USBCTRL_IRQ);
+        let driver = USBDriver::new(p.USB, irq);
+        let usb_shell = usb_shell::UsbShell;
+        usb_shell.run(&mut usb_shell::LoggerState::new(), driver).await;
+    }
+    
     //init pio
-    // let pio0 = p.PIO0;
-    // let pio1 = p.PIO1;
-    // let (_, sm0, _sm1, _sm2, _sm3, ..) = pio0.split();
+    let (_, sm0, _sm1, _sm2, _sm3, ..) = p.PIO0.split();
     // let (_, _pio1_sm0, ..) = pio1.split();
     // spawner.spawn(shell_task(spawner, rx, tx)).unwrap();
     // spawner.spawn(shell_task(uart)).unwrap();
-    // spawner.spawn(mylog::log_task(tx));
-    // spawner.spawn(pwmin_pio::pio0_sm0_pwmin_task(sm0, p.PIN_0.degrade())).unwrap();
+    spawner.spawn(pwmin_pio::pio0_sm0_pwmin_task(sm0, p.PIN_0.degrade(), 0)).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm1(sm1, p.PIN_1.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm2(sm2, p.PIN_2.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio0_task_sm3(sm3, p.PIN_3.degrade())).unwrap();
     // spawner.spawn(pwmin_pio::pio1_task_sm0(pio1_sm0, p.PIN_4.degrade())).unwrap();
-    // spawner.spawn(pwmin_pio::pwmin_log_task()).unwrap();
+    spawner.spawn(pwmin_pio::pwmin_log_task()).unwrap();
     // let mut counter = 0;
 
-    // loop {
-    //     let mut env = SevenShellEnv::default();
-    //     let mut rx_buf:[u8;32] = [0;32];
-    //     loop {
-    //         let rx_len = rx.read(&mut rx_buf).await.unwrap();
-    //         for byte in &rx_buf[..rx_len] {
-    //             shell.feed(&mut env, *byte).await;
-    //         }
-    //     }
-    // }
+    let mut shell: SevenShell = create_shell().await;
+    let mut rx_buf:[u8;32] = [0;32];
+    loop {
+        let rx_len = rx.read(&mut rx_buf).await.unwrap();
+        for byte in &rx_buf[..rx_len] {
+            unsafe {shell.feed(&mut SHELL_ENV, *byte).await;}
+        }
+    }
 
     // join(tx_fut, rx_fut).await;
-    usb_shell.run(&mut usb_shell::LoggerState::new(), driver).await;
 }
