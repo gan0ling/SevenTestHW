@@ -2,7 +2,7 @@ use {defmt_rtt as _, panic_probe as _};
 use core::sync::atomic::AtomicBool;
 
 use ashell::ShellResult;
-use embassy_rp::{gpio::{AnyPin, Pin}, Peripheral, Peripherals, peripherals::PIO1, peripherals::PIO0, PeripheralRef};
+use embassy_rp::{gpio::{AnyPin, Pin}, Peripheral, Peripherals, peripherals::PIO1, peripherals::PIO0, PeripheralRef, pio::PioCommon};
 use embassy_rp::pio::{PioStateMachine, PioStateMachineInstance, Pio0, Pio1, Sm0, Sm1, Sm2, Sm3, PioPeripheral,
                       ShiftDirection,FifoJoin};
 use embassy_rp::pio_instr_util;
@@ -186,7 +186,7 @@ pub fn pwmin_register_cmd() {
 macro_rules! impl_pwmin_pio {
     ($pio:ident, $sm:ident, $fn:ident) => {
         #[embassy_executor::task]
-        pub async fn $fn(mut sm: PioStateMachineInstance<$pio, $sm>, pin:AnyPin, signal_no:usize) {
+        pub async fn $fn(mut sm: PioStateMachineInstance<$pio, $sm>, pin:AnyPin, signal_no:usize, wrap_source:u8, wrap_target:u8) {
             //setup msg
             let mut msg:PwmInfo = PwmInfo::default();
             msg.pin = pin.pin() as u32;
@@ -198,19 +198,15 @@ macro_rules! impl_pwmin_pio {
             sm.restart();
             sm.clear_fifos();
             let _wait_irq = sm.sm_no();
-            let prg = pio_proc::pio_file!("./src/PwmIn.pio");
-            let relocated = RelocatedProgram::new(&prg.program);
+            pio_instr_util::exec_jmp(&mut sm, 0);
+            sm.set_wrap(wrap_source, wrap_target);
 
             let pin = sm.make_pio_pin(pin);
             sm.set_jmp_pin(pin.pin());
             sm.set_in_base_pin(&pin);
 
-            sm.write_instr(relocated.origin() as usize, relocated.code());
-            pio_instr_util::exec_jmp(&mut sm, relocated.origin());
             let clkdiv:u32 = (125e6 / (SM_CLK as f32)) as u32;
             sm.set_clkdiv(clkdiv << 8);
-            let pio::Wrap { source, target} = relocated.wrap();
-            sm.set_wrap(source, target);
 
             // sm.set_autopull(false);
             sm.set_fifo_join(FifoJoin::RxOnly);
@@ -265,10 +261,10 @@ macro_rules! impl_pwmin_pio {
 }
 
 impl_pwmin_pio!(Pio0, Sm0, pio0_sm0_pwmin_task);
-// impl_pwmin_pio!(Pio0, Sm1, pio0_sm1_pwmin_task);
-// impl_pwmin_pio!(Pio0, Sm2, pio0_sm2_pwmin_task);
-// impl_pwmin_pio!(Pio0, Sm3, pio0_sm3_pwmin_task);
-// impl_pwmin_pio!(Pio1, Sm0, pio1_sm0_pwmin_task);
+impl_pwmin_pio!(Pio0, Sm1, pio0_sm1_pwmin_task);
+impl_pwmin_pio!(Pio0, Sm2, pio0_sm2_pwmin_task);
+impl_pwmin_pio!(Pio0, Sm3, pio0_sm3_pwmin_task);
+impl_pwmin_pio!(Pio1, Sm0, pio1_sm0_pwmin_task);
 // impl_pwmin_pio!(Pio1, Sm1, pio1_sm1_pwmin_task);
 // impl_pwmin_pio!(Pio1, Sm2, pio1_sm2_pwmin_task);
 // impl_pwmin_pio!(Pio1, Sm3, pio1_sm3_pwmin_task);
@@ -279,73 +275,24 @@ pub async fn pwmin_init(pio0:PIO0, pio1:PIO1, pin0:AnyPin, pin1:AnyPin, pin2:Any
     register_shell_cmd("pwmin", pwmin_cmd);
 
     //spawn task
-    // let (_, sm0, sm1, sm2, sm3) = pio0.split();
-    // let (_, sm4, ..) = pio1.split();
+    let (mut pio0common, sm0, sm1, sm2, sm3) = pio0.split();
+    let (mut pio1common, sm4, ..) = pio1.split();
 
-    // Spawner::for_current_executor().await.spawn(pio0_sm0_pwmin_task(sm0, pin0, 0)).unwrap();
-    // Spawner::for_current_executor().await.spawn(pio0_sm1_pwmin_task(sm1, pin1, 1)).unwrap();
-    // Spawner::for_current_executor().await.spawn(pio0_sm2_pwmin_task(sm2, pin2, 2)).unwrap();
-    // Spawner::for_current_executor().await.spawn(pio0_sm3_pwmin_task(sm3, pin3, 3)).unwrap();
-    // Spawner::for_current_executor().await.spawn(pio1_sm0_pwmin_task(sm4, pin4, 4)).unwrap();
+    //setup pwmin_program for PIO0 and PIO1 for share
+    let prg = pio_proc::pio_file!("./src/PwmIn.pio");
+    let relocated = RelocatedProgram::new(&prg.program);
+    let pio::Wrap{ source, target } = relocated.wrap();
+    pio0common.write_instr(relocated.origin() as usize, relocated.code());
+    pio1common.write_instr(relocated.origin() as usize, relocated.code());
+
+    Spawner::for_current_executor().await.spawn(pio0_sm0_pwmin_task(sm0, pin0, 0, source, target)).unwrap();
+    // Spawner::for_current_executor().await.spawn(pio0_sm1_pwmin_task(sm1, pin1, 1, source, target)).unwrap();
+    // Spawner::for_current_executor().await.spawn(pio0_sm2_pwmin_task(sm2, pin2, 2, source, target)).unwrap();
+    // Spawner::for_current_executor().await.spawn(pio0_sm3_pwmin_task(sm3, pin3, 3, source, target)).unwrap();
+    // Spawner::for_current_executor().await.spawn(pio1_sm0_pwmin_task(sm4, pin4, 4, source, target)).unwrap();
     
-    // Spawner::for_current_executor().await.spawn(pwmin_log_task()).unwrap();
+    Spawner::for_current_executor().await.spawn(pwmin_log_task()).unwrap();
 }
-
-// #[embassy_executor::task]
-// pub async fn pwmin_task(mut sm: impl PioStateMachine, pin:AnyPin) {
-//     //setup msg
-//     let mut msg:PwmInfo = PwmInfo::default();
-//     msg.pin = pin.pin() as u32;
-//     let publisher = PWM_PUBSUB_CHANNEL.publisher().unwrap();
-
-//     // setup sm
-//     let _wait_irq = sm.sm_no();
-//     let prg = pio_proc::pio_file!("./src/PwmIn.pio");
-//     let relocated = RelocatedProgram::new(&prg.program);
-
-//     let pin = sm.make_pio_pin(pin);
-//     sm.set_jmp_pin(pin.pin());
-//     sm.set_in_base_pin(&pin);
-
-//     sm.write_instr(relocated.origin() as usize, relocated.code());
-//     pio_instr_util::exec_jmp(&mut sm, relocated.origin());
-//     let clkdiv:u32 = (125e6 / (SM_CLK as f32)) as u32;
-//     sm.set_clkdiv(clkdiv << 8);
-//     let pio::Wrap { source, target} = relocated.wrap();
-//     sm.set_wrap(source, target);
-
-//     sm.set_autopull(false);
-//     sm.set_fifo_join(FifoJoin::RxOnly);
-//     sm.set_in_shift_dir(ShiftDirection::Left);
-//     // sm.set_pull_threshold(2);
-//     sm.clear_fifos();
-//     sm.set_enable(true);
-
-//     let mut high_period:u32 = 0; 
-//     let mut low_period:u32 = 0; 
-//     let mut tmp_period_1:u32 = 0;
-//     let mut tmp_period_2:u32 = 0;
-//     loop {
-//         // sm.wait_irq(wait_irq).await;
-//         tmp_period_1 = sm.wait_pull().await;
-//         tmp_period_2 = sm.wait_pull().await;
-//         // sm.clear_fifos();
-//         if tmp_period_1 & 0xF0000000 != 0 {
-//             //tmp_period_1 is low_period
-//             high_period = tmp_period_2 * 2;
-//             low_period = tmp_period_1 * 2;
-//         } else {
-//             //tmp_period_1 is high_period
-//             low_period = tmp_period_2 * 2;
-//             high_period = tmp_period_1 * 2;
-//         }
-//         if ((high_period / 10) != (msg.high_period / 10)) || ((low_period / 10) != (msg.low_period / 10)) {
-//             msg.high_period = high_period;
-//             msg.low_period = low_period;
-//             publisher.publish_immediate(msg);
-//         }
-//     }
-// }
 
 #[embassy_executor::task]
 pub async fn pwmin_log_task() {

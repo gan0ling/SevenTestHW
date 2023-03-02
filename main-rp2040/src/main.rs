@@ -59,8 +59,7 @@ async fn main(spawner: Spawner) {
     mylog::init_log();
     spawner.spawn(mylog::log_task(tx));
     log::info!("welcome to SevenTest");
-    // pwmin_init(p.PIO0, p.PIO1, p.PIN_0.degrade(), p.PIN_1.degrade(), p.PIN_2.degrade(), p.PIN_3.degrade(), p.PIN_4.degrade()).await;
-    pwmin_pio::pwmin_register_cmd();
+    pwmin_init(p.PIO0, p.PIO1, p.PIN_0.degrade(), p.PIN_1.degrade(), p.PIN_2.degrade(), p.PIN_3.degrade(), p.PIN_4.degrade()).await;
 
     //init usb shell
     #[cfg(usb_shell)]
@@ -71,18 +70,6 @@ async fn main(spawner: Spawner) {
         usb_shell.run(&mut usb_shell::LoggerState::new(), driver).await;
     }
     
-    //init pio
-    let (_, sm0, _sm1, _sm2, _sm3, ..) = p.PIO0.split();
-    // let (_, _pio1_sm0, ..) = pio1.split();
-    // spawner.spawn(shell_task(spawner, rx, tx)).unwrap();
-    // spawner.spawn(shell_task(uart)).unwrap();
-    spawner.spawn(pwmin_pio::pio0_sm0_pwmin_task(sm0, p.PIN_0.degrade(), 0)).unwrap();
-    // spawner.spawn(pwmin_pio::pio0_task_sm1(sm1, p.PIN_1.degrade())).unwrap();
-    // spawner.spawn(pwmin_pio::pio0_task_sm2(sm2, p.PIN_2.degrade())).unwrap();
-    // spawner.spawn(pwmin_pio::pio0_task_sm3(sm3, p.PIN_3.degrade())).unwrap();
-    // spawner.spawn(pwmin_pio::pio1_task_sm0(pio1_sm0, p.PIN_4.degrade())).unwrap();
-    spawner.spawn(pwmin_pio::pwmin_log_task()).unwrap();
-    // let mut counter = 0;
 
     let mut shell: SevenShell = create_shell().await;
     let mut rx_buf:[u8;32] = [0;32];
