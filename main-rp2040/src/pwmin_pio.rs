@@ -286,10 +286,10 @@ pub async fn pwmin_init(pio0:PIO0, pio1:PIO1, pin0:AnyPin, pin1:AnyPin, pin2:Any
     pio1common.write_instr(relocated.origin() as usize, relocated.code());
 
     Spawner::for_current_executor().await.spawn(pio0_sm0_pwmin_task(sm0, pin0, 0, source, target)).unwrap();
-    // Spawner::for_current_executor().await.spawn(pio0_sm1_pwmin_task(sm1, pin1, 1, source, target)).unwrap();
-    // Spawner::for_current_executor().await.spawn(pio0_sm2_pwmin_task(sm2, pin2, 2, source, target)).unwrap();
-    // Spawner::for_current_executor().await.spawn(pio0_sm3_pwmin_task(sm3, pin3, 3, source, target)).unwrap();
-    // Spawner::for_current_executor().await.spawn(pio1_sm0_pwmin_task(sm4, pin4, 4, source, target)).unwrap();
+    Spawner::for_current_executor().await.spawn(pio0_sm1_pwmin_task(sm1, pin1, 1, source, target)).unwrap();
+    Spawner::for_current_executor().await.spawn(pio0_sm2_pwmin_task(sm2, pin2, 2, source, target)).unwrap();
+    Spawner::for_current_executor().await.spawn(pio0_sm3_pwmin_task(sm3, pin3, 3, source, target)).unwrap();
+    Spawner::for_current_executor().await.spawn(pio1_sm0_pwmin_task(sm4, pin4, 4, source, target)).unwrap();
     
     Spawner::for_current_executor().await.spawn(pwmin_log_task()).unwrap();
 }
