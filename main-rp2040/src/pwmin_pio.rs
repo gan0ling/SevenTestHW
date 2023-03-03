@@ -14,7 +14,7 @@ use embassy_sync::pubsub::PubSubChannel;
 use heapless::Vec;
 use embassy_executor::Spawner;
 use embassy_sync::signal::Signal;
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant};
 use crate::shell::register_shell_cmd;
 
 pub type PwmInCommandSignal = Signal<ThreadModeRawMutex, PwmInCommand>;
@@ -27,7 +27,9 @@ pub struct PwmInfo {
     pin:u32,
     clk:u32,
     high_period: u32, //high period in tick count
-    low_period: u32 //low period in tick count
+    low_period: u32, //low period in tick count
+    count: u32,
+    time:u64,
 }
 
 impl Default for PwmInfo
@@ -38,6 +40,8 @@ impl Default for PwmInfo
             clk: SM_CLK,
             high_period: 0,
             low_period: 0,
+            count: 0,
+            time: 0,
         }
     }
 }
@@ -47,17 +51,6 @@ enum PwmInCommand {
     Start(usize),
     Stop,
 }
-// #[derive(Copy, Clone)]
-// enum PioSmInstance {
-//     Pio0Sm0(PioStateMachineInstance<Pio0, Sm0>),
-//     Pio0Sm1(PioStateMachineInstance<Pio0, Sm1>),
-//     Pio0Sm2(PioStateMachineInstance<Pio0, Sm2>),
-//     Pio0Sm3(PioStateMachineInstance<Pio0, Sm3>),
-//     Pio1Sm0(PioStateMachineInstance<Pio1, Sm0>),
-//     Pio1Sm1(PioStateMachineInstance<Pio1, Sm1>),
-//     Pio1Sm2(PioStateMachineInstance<Pio1, Sm2>),
-//     Pio1Sm3(PioStateMachineInstance<Pio1, Sm3>),
-// }
 struct PwmIn {
     // pin: AnyPin,
     run: bool,
@@ -141,6 +134,8 @@ impl PwmInShellEnv {
         } else {
             if idx < self.pwmin_state.len() {
                 self.pwmin_state[idx].cmd.signal(PwmInCommand::Start(idx));
+                //TODO use AutomicBool
+                self.pwmin_state[idx].run = true;
                 Ok(())
             } else {
                 Err(PwmInError::PinError)
@@ -161,7 +156,13 @@ fn pwmin_cmd(cmd:&str, args:&str) -> ShellResult {
         "start" => {
             //start pwmin
             sub_args.split_ascii_whitespace().map(|a| {a.parse::<usize>().unwrap()}).for_each(|pin| { 
-                unsafe {PWMIN.start(pin)};
+                let ret = unsafe {PWMIN.start(pin)};
+                match ret {
+                    Err(PwmInError::PinInUse) => log::info!("[pwmin] {} already started", pin),
+                    Err(PwmInError::PinError) => log::info!("[pwmin] {} invalid", pin),
+                    Ok(_) => log::info!("[pwmin] {} start success", pin),
+                    _ => (),
+                }
             });
             Ok(())
         },
@@ -169,6 +170,7 @@ fn pwmin_cmd(cmd:&str, args:&str) -> ShellResult {
             //stop pwmin
             sub_args.split_ascii_whitespace().map(|a| {a.parse::<usize>().unwrap()}).for_each(|pin| { 
                 unsafe {PWMIN.stop(pin)};
+                log::info!("[pwmin] {} stop success", pin);
             });
             Ok(())
         },
@@ -211,12 +213,12 @@ macro_rules! impl_pwmin_pio {
             // sm.set_autopull(false);
             sm.set_fifo_join(FifoJoin::RxOnly);
             sm.set_in_shift_dir(ShiftDirection::Left);
-            sm.set_pull_threshold(2);
+            // sm.set_pull_threshold(2);
 
             let mut high_period:u32 = 10; 
             let mut low_period:u32 = 20; 
-            let mut tmp_period_1:u32 = 0;
-            let mut tmp_period_2:u32 = 0;
+            // let mut tmp_period_1:u32 = 0;
+            // let mut tmp_period_2:u32 = 0;
 
             loop {
                 let cmd = signal.wait().await;
@@ -226,22 +228,38 @@ macro_rules! impl_pwmin_pio {
                     sm.set_enable(true);
                     loop {
                         // sm.wait_irq(_wait_irq).await;
-                        tmp_period_1 = sm.wait_pull().await;
-                        tmp_period_2 = sm.wait_pull().await;
+                        high_period = sm.wait_pull().await * 2;
+                        low_period = sm.wait_pull().await * 2;
                         sm.clear_fifos();
-                        if tmp_period_1 & 0xF0000000 != 0 {
-                            //tmp_period_1 is low_period
-                            high_period = tmp_period_2 * 2;
-                            low_period = tmp_period_1 * 2;
-                        } else {
-                            //tmp_period_1 is high_period
-                            low_period = tmp_period_2 * 2;
-                            high_period = tmp_period_1 * 2;
-                        }
-                        if ((high_period / 10) != (msg.high_period / 10)) || ((low_period / 10) != (msg.low_period / 10)) {
+                        // if tmp_period_1 & 0xF0000000 != 0 {
+                        //     //tmp_period_1 is low_period
+                        //     high_period = tmp_period_2 * 2;
+                        //     low_period = tmp_period_1 * 2;
+                        // } else {
+                        //     //tmp_period_1 is high_period
+                        //     low_period = tmp_period_2 * 2;
+                        //     high_period = tmp_period_1 * 2;
+                        // }
+                        if msg.high_period.abs_diff(high_period) > 10 || msg.low_period.abs_diff(low_period) > 10 {
+                            if msg.time != 0 {
+                                //send previous msg
+                                msg.time = Instant::now().as_micros();
+                                publisher.publish_immediate(msg);
+                            }
+                            msg.count = 1;
                             msg.high_period = high_period;
                             msg.low_period = low_period;
+                            msg.time = Instant::now().as_micros();
                             publisher.publish_immediate(msg);
+                        } else {
+                            //add count
+                            msg.count += 1;
+                            if msg.count >= 100 {
+                                //send
+                                msg.time = Instant::now().as_micros();
+                                publisher.publish_immediate(msg);
+                                msg.count = 0;
+                            }
                         }
 
                         //check whether we need exit
@@ -283,13 +301,13 @@ pub async fn pwmin_init(pio0:PIO0, pio1:PIO1, pin0:AnyPin, pin1:AnyPin, pin2:Any
     let relocated = RelocatedProgram::new(&prg.program);
     let pio::Wrap{ source, target } = relocated.wrap();
     pio0common.write_instr(relocated.origin() as usize, relocated.code());
-    pio1common.write_instr(relocated.origin() as usize, relocated.code());
+    // pio1common.write_instr(relocated.origin() as usize, relocated.code());
 
     Spawner::for_current_executor().await.spawn(pio0_sm0_pwmin_task(sm0, pin0, 0, source, target)).unwrap();
-    Spawner::for_current_executor().await.spawn(pio0_sm1_pwmin_task(sm1, pin1, 1, source, target)).unwrap();
-    Spawner::for_current_executor().await.spawn(pio0_sm2_pwmin_task(sm2, pin2, 2, source, target)).unwrap();
-    Spawner::for_current_executor().await.spawn(pio0_sm3_pwmin_task(sm3, pin3, 3, source, target)).unwrap();
-    Spawner::for_current_executor().await.spawn(pio1_sm0_pwmin_task(sm4, pin4, 4, source, target)).unwrap();
+    //Spawner::for_current_executor().await.spawn(pio0_sm1_pwmin_task(sm1, pin1, 1, source, target)).unwrap();
+    //Spawner::for_current_executor().await.spawn(pio0_sm2_pwmin_task(sm2, pin2, 2, source, target)).unwrap();
+    //Spawner::for_current_executor().await.spawn(pio0_sm3_pwmin_task(sm3, pin3, 3, source, target)).unwrap();
+    //Spawner::for_current_executor().await.spawn(pio1_sm0_pwmin_task(sm4, pin4, 4, source, target)).unwrap();
     
     Spawner::for_current_executor().await.spawn(pwmin_log_task()).unwrap();
 }
@@ -300,7 +318,9 @@ pub async fn pwmin_log_task() {
 
     loop {
         if let WaitResult::Message(msg) = sub.next_message().await {
-            log::info!("[PwmIn]:{}:{}:{}:{}", msg.pin, msg.clk, msg.high_period, msg.low_period);
+            // log::info!("[PwmIn]:{}:{}:{}:{}", msg.pin, msg.clk, msg.high_period, msg.low_period);
+            //do not send clock
+            log::info!("[PwmIn]:{}:{}:{}:{}:{}", msg.pin, msg.time, msg.count, msg.high_period, msg.low_period);
         }
     }
 }
